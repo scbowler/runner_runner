@@ -1,15 +1,16 @@
 let game = null;
 let gameOptions = {
-    platformSpeedRange: [300, 400],
+    platformSpeedRange: [300, 300],
     spawnRange: [80, 300],
     platformSizeRange: [90, 300],
-    platformHeightRange: [-10, 10],
-    platformHighScale: 10,
+    platformHeightRange: [-5, 5],
+    platformHighScale: 20,
     platformVerticalLimit: [0.4, 0.8],
     playerGravity: 900,
     jumpForce: 400,
     playerStartPosition: 200,
-    jumps: 2
+    jumps: 2,
+    coinPercent: 25
 };
 
 window.onload = function(){
@@ -17,8 +18,8 @@ window.onload = function(){
         type: this.Phaser.AUTO,
         width: 1334,
         height: 750,
-        scene: PlayGame,
-        backgroundColor: 0x87CEEB,
+        scene: [PreloadGame, PlayGame],
+        backgroundColor: 0x0C88C7,
         physics: {
             default: 'arcade'
         }
@@ -39,40 +40,24 @@ window.onload = function(){
     });
 }
 
-
-class PlayGame extends Phaser.Scene {
+class PreloadGame extends Phaser.Scene {
     constructor(){
-        super('PlayGame');
+        super('PreloadGame');
     }
-    
+
     preload(){
         this.load.image('platform', 'assets/platform.png');
         this.load.spritesheet('player', 'assets/player.png', {
             frameWidth: 24,
             frameHeight: 48
         });
+        this.load.spritesheet('coin', 'assets/coin.png', {
+            frameWidth: 20,
+            frameHeight: 20
+        });
     }
 
     create(){
-        this.platformGroup = this.add.group({
-            removeCallback: (platform) => {
-                platform.scene.platformPool.add(platform);
-            }
-        });
-
-        this.platformPool = this.add.group({
-            removeCallback: platform => {
-                platform.scene.platformGroup.add(platform);
-            }
-        });
-
-        this.playerJumps = 0;
-
-        this.addPlatform(game.config.width, game.config.width / 2, game.config.height * gameOptions.platformVerticalLimit[1]);
-
-        this.player = this.physics.add.sprite(gameOptions.playerStartPosition, game.config.height * 0.7, 'player');
-        this.player.setGravityY(gameOptions.playerGravity);
-
         this.anims.create({
             key: 'run',
             frames: this.anims.generateFrameNumbers('player', {
@@ -83,35 +68,125 @@ class PlayGame extends Phaser.Scene {
             repeat: -1
         });
 
+        this.anims.create({
+            key: 'rotate',
+            frames: this.anims.generateFrameNumbers('coin', {
+                start: 0,
+                end: 5
+            }),
+            frameRate: 15,
+            yoyo: true,
+            repeat: -1
+        });
+
+        this.scene.start('PlayGame');
+    }
+}
+
+class PlayGame extends Phaser.Scene {
+    constructor(){
+        super('PlayGame');
+    }
+
+    create(){
+        this.addedPlatforms = 0;
+
+        this.platformGroup = this.add.group({
+            removeCallback: (platform) => {
+                platform.scene.platformPool.add(platform);
+            }
+        });
+        this.platformPool = this.add.group({
+            removeCallback: platform => {
+                platform.scene.platformGroup.add(platform);
+            }
+        });
+
+        this.coinGroup = this.add.group({
+            removeCallback: coin => {
+                coin.scene.coinPool.add(coin);
+            }
+        });
+        this.coinPool = this.add.group({
+            removeCallback: coin => {
+                coin.scene.coinGroup.add(coin);
+            }
+        });
+
+        this.playerJumps = 0;
+
+        this.addPlatform(game.config.width, game.config.width / 2, game.config.height * gameOptions.platformVerticalLimit[1]);
+
+        this.player = this.physics.add.sprite(gameOptions.playerStartPosition, game.config.height * 0.7, 'player');
+        this.player.setGravityY(gameOptions.playerGravity);
+
         this.physics.add.collider(this.player, this.platformGroup, function(){
             if(!this.player.anims.isPlaying){
                 this.player.anims.play('run');
             }
         }, null, this);
 
+        this.physics.add.overlap(this.player, this.coinGroup, function(player, coin){
+            this.tweens.add({
+                targets: coin,
+                y: coin.y - 100,
+                alpha: 0,
+                duration: 800,
+                ease: 'Cubic.easeOut',
+                callbackScope: this,
+                onComplete: function(){
+                    this.coinGroup.killAndHide(coin);
+                    this.coinGroup.remove(coin);
+                }
+            });
+        }, null, this);
+
         this.input.on('pointerdown', this.jump, this);
     }
 
     addPlatform(platformWidth, posX, posY){
+        this.addedPlatforms++;
         let platform = null;
 
         if(this.platformPool.getLength()){
             platform = this.platformPool.getFirst();
             platform.x = posX;
+            platform.y = posY;
             platform.active = true;
             platform.visible = true;
             this.platformPool.remove(platform);
+            platform.displayWidth = platformWidth;
+            platform.titleScaleX = 1 / platform.scaleX;
         } else {
             const [min, max] = gameOptions.platformSpeedRange;
-            platform = this.physics.add.sprite(posX, posY, 'platform');
-            platform.setImmovable(true);
-            platform.setVelocityX(Phaser.Math.Between(min, max) * -1);
+            platform = this.add.tileSprite(posX, posY, platformWidth, 32, 'platform');
+            this.physics.add.existing(platform);
+            platform.body.setImmovable(true);
+            platform.body.setVelocityX(Phaser.Math.Between(min, max) * -1);
             this.platformGroup.add(platform);
         }
         const [min, max] = gameOptions.spawnRange;
-
-        platform.displayWidth = platformWidth;
         this.nextPlatformDistance = Phaser.Math.Between(min, max);
+
+        if(this.addedPlatforms > 1){
+            if(Phaser.Math.Between(1, 100) <= gameOptions.coinPercent){
+                if (this.coinPool.getLength()) {
+                    const coin = this.coinPool.getFirst();
+                    coin.x = posX;
+                    coin.y = posY - 96;
+                    coin.alpha = 1;
+                    coin.active = true;
+                    coin.visible = true;
+                    this.coinPool.remove(coin);
+                } else {
+                    const coin = this.physics.add.sprite(posX, posY - 96, 'coin');
+                    coin.setImmovable(true);
+                    coin.setVelocityX(platform.body.velocity.x);
+                    coin.anims.play('rotate');
+                    this.coinGroup.add(coin);
+                }
+            }
+        }
     }
 
     jump(){
@@ -148,6 +223,13 @@ class PlayGame extends Phaser.Scene {
             if(platform.x < - platform.displayWidth / 2){
                 this.platformGroup.killAndHide(platform);
                 this.platformGroup.remove(platform);
+            }
+        }, this);
+
+        this.coinGroup.getChildren().forEach(function(coin){
+            if(coin.x < -coin.displayWidth / 2){
+                this.coinGroup.killAndHide(coin);
+                this.coinGroup.remove(coin);
             }
         }, this);
 
