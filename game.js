@@ -11,7 +11,7 @@ let gameOptions = {
     jumpForce: 400,
     playerStartPosition: 200,
     jumps: 2,
-    coinPercent: 25,
+    coinPercent: 45,
     firePercent: 25
 };
 
@@ -20,7 +20,7 @@ window.onload = function(){
         type: this.Phaser.AUTO,
         width: 1334,
         height: 750,
-        scene: [PreloadGame, PlayGame],
+        scene: [PreloadGame, PlayGame, GameOver],
         backgroundColor: 0x0C88C7,
         physics: {
             default: 'arcade'
@@ -110,6 +110,7 @@ class PlayGame extends Phaser.Scene {
 
     create(){
         this.score = 0;
+
         this.mountainGroup = this.add.group();
 
         this.platformGroup = this.add.group({
@@ -193,6 +194,7 @@ class PlayGame extends Phaser.Scene {
             this.dying = true;
             this.player.anims.stop();
             this.player.setFrame(0);
+            this.player.tint = 1;
             this.player.angle = 90;
             this.player.body.setVelocityY(-200);
             this.physics.world.removeCollider(this.platformCollider);
@@ -311,7 +313,7 @@ class PlayGame extends Phaser.Scene {
 
     update(){
         if(this.player.y > game.config.height){
-            this.scene.start('PlayGame');
+            this.scene.start('GameOver', {score: this.score});
         }
 
         this.player.x = gameOptions.playerStartPosition;
@@ -372,6 +374,41 @@ class PlayGame extends Phaser.Scene {
         }
     }
 };
+
+class GameOver extends Phaser.Scene {
+    constructor(data){
+        super('GameOver');
+    }
+
+    init(data){
+        this.score = data.score;
+    }
+
+    create(){
+        const qh = this.game.config.height / 4;
+
+        this.add.text(this.game.config.width / 2, qh, 'Game Over', {
+            fontSize: '50px',
+            fill: '#000'
+        }).setOrigin(0.5, 0.5);
+        this.add.text(this.game.config.width / 2, qh * 2, `Final Score: ${this.score}`, {
+            fontSize: '65px',
+            fill: '#000'
+        }).setOrigin(0.5, 0.5);
+        this.add.text(this.game.config.width / 2, qh * 3, 'Press any key to play again', {
+            fontSize: '30px',
+            fill: '#000'
+        }).setOrigin(0.5, 0.5);
+
+        this.input.keyboard.on('keydown', () => {
+            this.scene.start('PlayGame')
+        })
+    }
+
+    update(){
+
+    }
+}
 
 function resize(){
     const canvas = document.querySelector('canvas');
