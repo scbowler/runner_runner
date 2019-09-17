@@ -11,7 +11,8 @@ let gameOptions = {
     jumpForce: 400,
     playerStartPosition: 200,
     jumps: 2,
-    coinPercent: 25
+    coinPercent: 25,
+    firePercent: 25
 };
 
 window.onload = function(){
@@ -56,6 +57,10 @@ class PreloadGame extends Phaser.Scene {
             frameWidth: 20,
             frameHeight: 20
         });
+        this.load.spritesheet('fire', 'assets/fire.png', {
+            frameWidth: 40,
+            frameHeight: 70
+        });
         this.load.spritesheet('mountain', 'assets/mountain.png', {
             frameWidth: 512,
             frameHeight: 512
@@ -84,6 +89,16 @@ class PreloadGame extends Phaser.Scene {
             repeat: -1
         });
 
+        this.anims.create({
+            key: 'burn',
+            frames: this.anims.generateFrameNumbers('fire', {
+                start: 0,
+                end: 4
+            }),
+            frameRate: 15,
+            repeat: -1
+        });
+
         this.scene.start('PlayGame');
     }
 }
@@ -94,6 +109,7 @@ class PlayGame extends Phaser.Scene {
     }
 
     create(){
+        this.score = 0;
         this.mountainGroup = this.add.group();
 
         this.platformGroup = this.add.group({
@@ -118,6 +134,17 @@ class PlayGame extends Phaser.Scene {
             }
         });
 
+        this.fireGroup = this.add.group({
+            removeCallback: fire => {
+                fire.scene.firePool.add(fire);
+            }
+        });
+        this.firePool = this.add.group(fire => {
+            removeCallback: fire => {
+                fire.scene.fireGroup.add(fire);
+            }
+        });
+
         this.addMountains();
 
         this.addedPlatforms = 0;
@@ -130,13 +157,24 @@ class PlayGame extends Phaser.Scene {
         this.player.setGravityY(gameOptions.playerGravity);
         this.player.setDepth(2);
 
-        this.physics.add.collider(this.player, this.platformGroup, function(){
+        this.dying = false;
+
+        this.scoreText = this.add.text(16, 16, 'Score 0', {
+            fontSize: '32px',
+            fill: '#000'
+        });
+
+        this.platformCollider = this.physics.add.collider(this.player, this.platformGroup, function(){
             if(!this.player.anims.isPlaying){
                 this.player.anims.play('run');
             }
         }, null, this);
 
         this.physics.add.overlap(this.player, this.coinGroup, function(player, coin){
+            coin.disableBody(true, false);
+            this.score += 10;
+            this.scoreText.setText(`Score ${this.score}`);
+
             this.tweens.add({
                 targets: coin,
                 y: coin.y - 100,
@@ -151,7 +189,18 @@ class PlayGame extends Phaser.Scene {
             });
         }, null, this);
 
+        this.physics.add.overlap(this.player, this.fireGroup, function(player, fire){
+            this.dying = true;
+            this.player.anims.stop();
+            this.player.setFrame(0);
+            this.player.angle = 90;
+            this.player.body.setVelocityY(-200);
+            this.physics.world.removeCollider(this.platformCollider);
+        }, null, this);
+
         this.input.on('pointerdown', this.jump, this);
+
+        this.input.keyboard.on('keydown-SPACE', this.jump, this);
     }
 
     addMountains(){
@@ -221,12 +270,34 @@ class PlayGame extends Phaser.Scene {
                     this.coinGroup.add(coin);
                 }
             }
+
+            if(Phaser.Math.Between(1, 100) <= gameOptions.firePercent){
+                const fireX = posX - platformWidth / 2 + Phaser.Math.Between(1, platformWidth);
+                const fireY = posY - 46;
+                if(this.firePool.getLength()) {
+                    const fire = this.firePool.getFirst();
+                    fire.x = fireX;
+                    fire.y = fireY;
+                    fire.alpha = 1;
+                    fire.active = true;
+                    fire.visible = true;
+                    this.firePool.remove(fire);
+                } else {
+                    const fire = this.physics.add.sprite(fireX, fireY, 'fire');
+                    fire.setImmovable(true);
+                    fire.setVelocityX(platform.body.velocity.x);
+                    fire.setSize(8, 2, true);
+                    fire.anims.play('burn');
+                    fire.setDepth(2);
+                    this.fireGroup.add(fire);
+                }
+            }
         }
     }
 
     jump(){
         const down = this.player.body.touching.down;
-        if(down || (this.playerJumps > 0 && this.playerJumps < gameOptions.jumps)){
+        if((!this.dying) && (down || (this.playerJumps > 0 && this.playerJumps < gameOptions.jumps))){
             if(down){
                 this.playerJumps = 0;
             }
@@ -265,6 +336,13 @@ class PlayGame extends Phaser.Scene {
             if(coin.x < -coin.displayWidth / 2){
                 this.coinGroup.killAndHide(coin);
                 this.coinGroup.remove(coin);
+            }
+        }, this);
+
+        this.fireGroup.getChildren().forEach(function(fire){
+            if(fire.x < -fire.displayWidth / 2){
+                this.fireGroup.killAndHide(fire);
+                this.fireGroup.remove(fire);
             }
         }, this);
 
