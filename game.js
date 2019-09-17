@@ -1,6 +1,7 @@
 let game = null;
 let gameOptions = {
     platformSpeedRange: [300, 300],
+    mountainSpeed: 80,
     spawnRange: [80, 300],
     platformSizeRange: [90, 300],
     platformHeightRange: [-5, 5],
@@ -55,6 +56,10 @@ class PreloadGame extends Phaser.Scene {
             frameWidth: 20,
             frameHeight: 20
         });
+        this.load.spritesheet('mountain', 'assets/mountain.png', {
+            frameWidth: 512,
+            frameHeight: 512
+        });
     }
 
     create(){
@@ -89,7 +94,7 @@ class PlayGame extends Phaser.Scene {
     }
 
     create(){
-        this.addedPlatforms = 0;
+        this.mountainGroup = this.add.group();
 
         this.platformGroup = this.add.group({
             removeCallback: (platform) => {
@@ -113,12 +118,17 @@ class PlayGame extends Phaser.Scene {
             }
         });
 
+        this.addMountains();
+
+        this.addedPlatforms = 0;
+
         this.playerJumps = 0;
 
         this.addPlatform(game.config.width, game.config.width / 2, game.config.height * gameOptions.platformVerticalLimit[1]);
 
         this.player = this.physics.add.sprite(gameOptions.playerStartPosition, game.config.height * 0.7, 'player');
         this.player.setGravityY(gameOptions.playerGravity);
+        this.player.setDepth(2);
 
         this.physics.add.collider(this.player, this.platformGroup, function(){
             if(!this.player.anims.isPlaying){
@@ -144,6 +154,29 @@ class PlayGame extends Phaser.Scene {
         this.input.on('pointerdown', this.jump, this);
     }
 
+    addMountains(){
+        let rightmostMountain = this.getRightmostMountain();
+        if(rightmostMountain < game.config.width * 2){
+            const mountain = this.physics.add.sprite(rightmostMountain + Phaser.Math.Between(100, 350), game.config.height + Phaser.Math.Between(0, 100), 'mountain');
+            mountain.setOrigin(0.5, 1);
+            mountain.body.setVelocityX(gameOptions.mountainSpeed * -1);
+            this.mountainGroup.add(mountain);
+            if(Phaser.Math.Between(0, 1)){
+                mountain.setDepth(1);
+            }
+            mountain.setFrame(Phaser.Math.Between(0, 3));
+            this.addMountains();
+        }
+    }
+
+    getRightmostMountain(){
+        let rightmostMountain = -200;
+        this.mountainGroup.getChildren().forEach(function(mountain){
+            rightmostMountain = Math.max(rightmostMountain, mountain.x);
+        });
+        return rightmostMountain;
+    }
+
     addPlatform(platformWidth, posX, posY){
         this.addedPlatforms++;
         let platform = null;
@@ -163,6 +196,7 @@ class PlayGame extends Phaser.Scene {
             this.physics.add.existing(platform);
             platform.body.setImmovable(true);
             platform.body.setVelocityX(Phaser.Math.Between(min, max) * -1);
+            platform.setDepth(2);
             this.platformGroup.add(platform);
         }
         const [min, max] = gameOptions.spawnRange;
@@ -183,6 +217,7 @@ class PlayGame extends Phaser.Scene {
                     coin.setImmovable(true);
                     coin.setVelocityX(platform.body.velocity.x);
                     coin.anims.play('rotate');
+                    coin.setDepth(2);
                     this.coinGroup.add(coin);
                 }
             }
@@ -230,6 +265,18 @@ class PlayGame extends Phaser.Scene {
             if(coin.x < -coin.displayWidth / 2){
                 this.coinGroup.killAndHide(coin);
                 this.coinGroup.remove(coin);
+            }
+        }, this);
+
+        this.mountainGroup.getChildren().forEach(function(mountain){
+            if(mountain.x < -mountain.displayWidth){
+                const rightmostMountain = this.getRightmostMountain();
+                mountain.x = rightmostMountain + Phaser.Math.Between(100, 350);
+                mountain.y = game.config.height + Phaser.Math.Between(0, 100);
+                mountain.setFrame(Phaser.Math.Between(0, 3));
+                if(Phaser.Math.Between(0, 1)){
+                    mountain.setDepth(1);
+                }
             }
         }, this);
 
