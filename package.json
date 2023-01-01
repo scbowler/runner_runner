@@ -17,6 +17,6 @@
   },
   "homepage": "https://github.com/scbowler/runner_runner#readme",
   "dependencies": {
-    "phaser": "^3.19.0"
+    "phaser": "^3.55.2"
   }
 }
